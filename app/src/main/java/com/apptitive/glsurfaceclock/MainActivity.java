@@ -5,15 +5,31 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.apptitive.glsurfaceclock.view.ClockView;
+
 
 public class MainActivity extends ActionBarActivity {
+
+    private ClockView clockView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        clockView = (ClockView) findViewById(R.id.clockView);
     }
 
+    @Override
+    protected void onPause() {
+        super.onPause();
+        clockView.halt();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        clockView.start();
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {

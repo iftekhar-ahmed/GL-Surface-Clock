@@ -9,33 +9,49 @@ import android.graphics.PathDashPathEffect;
 import android.graphics.Point;
 import android.os.Build;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.Display;
 import android.view.View;
 import android.view.WindowManager;
 
+import java.util.Calendar;
+import java.util.TimeZone;
+
 /**
  * Created by Iftekhar on 08/12/2014.
  */
-public class ClockView extends View {
+public class ClockView extends View implements Runnable {
 
-    private Paint paintSecondMarks;
+    private boolean isRunning;
+    private float secHandX;
+    private float secHandY;
+    private float minHandX;
+    private float minHandY;
+    private float hourHandX;
+    private float hourHandY;
+    private Thread timeThread;
+    private Calendar calendar;
+    private Paint paintSecMarks;
     private Paint paintHourMarks;
-    private Paint paintSecondHand;
+    private Paint paintSecHand;
     private Paint paintHourAndMinuteHand;
     private Point centerPoint;
     private Path dialPathMark;
 
     private final float SEC_HOUR_MARK_THICKNESS = 5f;
-    private final float SECOND_HAND_THICKNESS = 2f;
+    private final float SEC_HAND_THICKNESS = 2f;
     private final float SEC_HOUR_MARK_RADIUS = 3f;
-    private final float DIAL_RADIUS_SECOND_MARKS = 200f;
-    private final float DIAL_RADIUS_HOUR_MARKS = DIAL_RADIUS_SECOND_MARKS - 15f;
-    private final float ADVANCE_SECOND_MARKS = (2f * (float)Math.PI * DIAL_RADIUS_SECOND_MARKS) / 60f + 0.05f;
-    private final float ADVANCE_HOUR_MARKS = ((2f * (float)Math.PI * DIAL_RADIUS_HOUR_MARKS) / 60f + 0.05f) * 5f;
+    private final float DIAL_RADIUS_SEC_MARKS = 200f;
+    private final float DIAL_RADIUS_HOUR_MARKS = DIAL_RADIUS_SEC_MARKS - 15f;
+    private final float ADVANCE_SEC_MARKS = (2f * (float) Math.PI * DIAL_RADIUS_SEC_MARKS) / 60f + 0.05f;
+    private final float ADVANCE_HOUR_MARKS = ((2f * (float) Math.PI * DIAL_RADIUS_HOUR_MARKS) / 60f + 0.05f) * 5f;
     private final float PHASE = 0f;
-    private final float SECOND_HAND_LENGTH = DIAL_RADIUS_HOUR_MARKS - 10f;
-    private final float MINUTE_HAND_LENGTH = DIAL_RADIUS_HOUR_MARKS - 10f;
+    private final float SEC_HAND_LENGTH = DIAL_RADIUS_HOUR_MARKS - 10f;
+    private final float MIN_HAND_LENGTH = DIAL_RADIUS_HOUR_MARKS - 10f;
     private final float HOUR_HAND_LENGTH = DIAL_RADIUS_HOUR_MARKS - 30f;
+    private final float CONST_SEC_HAND_THETA = 6f;
+    private final float CONST_MIN_HAND_THETA = 1f / 10f;
+    private final float CONST_HOUR_HAND_THETA = 1f / 12f;
 
     public ClockView(Context context) {
         super(context);
@@ -52,6 +68,33 @@ public class ClockView extends View {
         init();
     }
 
+    public void halt() {
+        isRunning = false;
+        while (true) {
+            try {
+                timeThread.join();
+                return;
+            } catch (InterruptedException exception) {
+                exception.printStackTrace();
+            }
+        }
+    }
+
+    public void start() {
+        isRunning = true;
+        timeThread = new Thread(this);
+        timeThread.start();
+    }
+
+    private Paint getStrokePaint(float thickness) {
+        Paint paint = new Paint();
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(thickness);
+        paint.setColor(Color.BLACK);
+        paint.setAntiAlias(true);
+        return paint;
+    }
+
     private void init() {
         setBackgroundColor(Color.RED);
         centerPoint = new Point();
@@ -64,36 +107,60 @@ public class ClockView extends View {
         }
         dialPathMark = new Path();
         dialPathMark.addCircle(0f, 0f, SEC_HOUR_MARK_RADIUS, Path.Direction.CW);
-        paintSecondMarks = new Paint();
-        paintSecondMarks.setStyle(Paint.Style.STROKE);
-        paintSecondMarks.setStrokeWidth(SEC_HOUR_MARK_THICKNESS);
-        paintSecondMarks.setColor(Color.BLACK);
-        paintSecondMarks.setAntiAlias(true);
-        paintSecondMarks.setPathEffect(new PathDashPathEffect(dialPathMark, ADVANCE_SECOND_MARKS, PHASE, PathDashPathEffect.Style.TRANSLATE));
-        paintHourMarks = new Paint();
-        paintHourMarks.setStyle(Paint.Style.STROKE);
-        paintHourMarks.setStrokeWidth(SEC_HOUR_MARK_THICKNESS);
-        paintHourMarks.setColor(Color.BLACK);
-        paintHourMarks.setAntiAlias(true);
+        paintSecMarks = getStrokePaint(SEC_HOUR_MARK_THICKNESS);
+        paintSecMarks.setPathEffect(new PathDashPathEffect(dialPathMark, ADVANCE_SEC_MARKS, PHASE, PathDashPathEffect.Style.TRANSLATE));
+        paintHourMarks = getStrokePaint(SEC_HOUR_MARK_THICKNESS);
         paintHourMarks.setPathEffect(new PathDashPathEffect(dialPathMark, ADVANCE_HOUR_MARKS, PHASE, PathDashPathEffect.Style.TRANSLATE));
-        paintSecondHand = new Paint();
-        paintSecondHand.setStyle(Paint.Style.STROKE);
-        paintSecondHand.setStrokeWidth(SECOND_HAND_THICKNESS);
-        paintSecondHand.setColor(Color.BLACK);
-        paintSecondHand.setAntiAlias(true);
-        paintHourAndMinuteHand = new Paint();
-        paintHourAndMinuteHand.setStrokeWidth(SEC_HOUR_MARK_THICKNESS);
-        paintHourAndMinuteHand.setColor(Color.BLACK);
-        paintHourAndMinuteHand.setAntiAlias(true);
+        paintSecHand = getStrokePaint(SEC_HAND_THICKNESS);
+        paintHourAndMinuteHand = getStrokePaint(SEC_HOUR_MARK_THICKNESS);
+        start();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
-        canvas.drawCircle(centerPoint.x, centerPoint.y, DIAL_RADIUS_SECOND_MARKS, paintSecondMarks);
+        canvas.drawCircle(centerPoint.x, centerPoint.y, DIAL_RADIUS_SEC_MARKS, paintSecMarks);
         canvas.drawCircle(centerPoint.x, centerPoint.y, DIAL_RADIUS_HOUR_MARKS, paintHourMarks);
-        canvas.drawLine(centerPoint.x, centerPoint.y, centerPoint.x + SECOND_HAND_LENGTH, centerPoint.y, paintSecondHand);
-        canvas.drawLine(centerPoint.x, centerPoint.y, centerPoint.x + 20f, centerPoint.y - MINUTE_HAND_LENGTH, paintHourAndMinuteHand);
-        canvas.drawLine(centerPoint.x, centerPoint.y, centerPoint.x, centerPoint.y - HOUR_HAND_LENGTH, paintHourAndMinuteHand);
+        canvas.drawLine(centerPoint.x, centerPoint.y, secHandX, secHandY, paintSecHand);
+        canvas.drawLine(centerPoint.x, centerPoint.y, minHandX, minHandY, paintHourAndMinuteHand);
+        canvas.drawLine(centerPoint.x, centerPoint.y, hourHandX, hourHandY, paintHourAndMinuteHand);
         super.onDraw(canvas);
+    }
+
+    @Override
+    public void run() {
+        calendar = Calendar.getInstance(TimeZone.getDefault());
+        int hour = calendar.get(Calendar.HOUR);
+        int min = calendar.get(Calendar.MINUTE);
+        int sec = calendar.get(Calendar.SECOND);
+        float secHandAngle = sec * CONST_SEC_HAND_THETA;
+        float minHandAngle = min * CONST_SEC_HAND_THETA + sec * CONST_MIN_HAND_THETA;
+        float hourHandAngle = hour * CONST_SEC_HAND_THETA + min * 0.5f + sec * CONST_HOUR_HAND_THETA;
+        while (isRunning) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            if (secHandAngle >= 360f) {
+                secHandAngle = 0f;
+            }
+            if (minHandAngle >= 360f) {
+                minHandAngle = 0f;
+            }
+            if (hourHandAngle >= 360f) {
+                hourHandAngle = 0f;
+            }
+            secHandAngle += CONST_SEC_HAND_THETA;
+            minHandAngle += CONST_MIN_HAND_THETA;
+            hourHandAngle += CONST_HOUR_HAND_THETA;
+            Log.i("sec min hour", "" + secHandAngle + " " + minHandAngle + " " + hourHandAngle);
+            secHandX = centerPoint.x + (float) (SEC_HAND_LENGTH * Math.cos(secHandAngle * (float) Math.PI / 180f));
+            secHandY = centerPoint.y + (float) (SEC_HAND_LENGTH * Math.sin(secHandAngle * (float) Math.PI / 180f));
+            minHandX = centerPoint.x + (float) (MIN_HAND_LENGTH * Math.cos(minHandAngle * (float) Math.PI / 180f));
+            minHandY = centerPoint.y + (float) (MIN_HAND_LENGTH * Math.sin(minHandAngle * (float) Math.PI / 180f));
+            hourHandX = centerPoint.x + (float) (HOUR_HAND_LENGTH * Math.cos(hourHandAngle * Math.PI / 180f));
+            hourHandY = centerPoint.y + (float) (HOUR_HAND_LENGTH * Math.sin(hourHandAngle * Math.PI / 180f));
+            postInvalidate();
+        }
     }
 }
